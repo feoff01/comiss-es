@@ -1,4 +1,6 @@
 # app.py
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 from flask import (
     Flask,
