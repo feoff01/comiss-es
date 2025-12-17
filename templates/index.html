@@ -8,9 +8,7 @@
     rel="stylesheet"
   >
   <style>
-    body {
-      background: #f5f7fb;
-    }
+    body { background: #f5f7fb; }
     .card {
       border-radius: 16px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.08);
@@ -24,36 +22,37 @@
       cursor: pointer;
       transition: 0.2s all;
     }
-    .upload-area:hover {
-      background: #f0f0ff;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 0.9rem;
-    }
+    .upload-area:hover { background: #f0f0ff; }
+    .subtitle { color: #666; font-size: 0.9rem; }
   </style>
 </head>
 <body>
   <div class="container py-5">
-    <div class="row justify-content-center">
-      <div class="col-lg-8">
-        <div class="card p-4 p-md-5">
-          <h1 class="h3 mb-3 text-center">Upload dos arquivos de comissão</h1>
-          <p class="subtitle text-center mb-4">
-            Coloque todos os 10 arquivos Excel na mesma pasta e selecione a pasta ou todos os arquivos de uma vez.
-          </p>
+    <div class="row justify-content-center g-4">
+      <div class="col-lg-10">
 
-          {% with messages = get_flashed_messages() %}
-            {% if messages %}
-              <div class="alert alert-warning">
-                {% for msg in messages %}
-                  <div>{{ msg }}</div>
-                {% endfor %}
-              </div>
-            {% endif %}
-          {% endwith %}
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-warning">
+              {% for msg in messages %}
+                <div>{{ msg }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <!-- ===================== CARD 1: PROCESSAR NOVO MÊS ===================== -->
+        <div class="card p-4 p-md-5 mb-4">
+          <h1 class="h3 mb-2 text-center">Processar comissões</h1>
+
 
           <form action="/processar" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Competência (mês/ano)</label>
+              <input type="month" name="competencia" class="form-control" required>
+              <div class="form-text">Ex.: 2025-12 (Dezembro de 2025)</div>
+            </div>
+
             <label class="upload-area mb-3">
               <div class="fw-semibold mb-1">Clique aqui para escolher a pasta/arquivos</div>
               <div class="subtitle">
@@ -78,18 +77,55 @@
             </button>
           </form>
         </div>
+
+        <!-- ===================== CARD 2: VISUALIZAR MÊS ANTIGO ===================== -->
+        <div class="card p-4 p-md-5">
+          <h2 class="h4 mb-2 text-center">Visualizar dashboards antigos </h2>
+          <p class="subtitle text-center mb-4">
+            Se já existir planilha, você pode escolher o mês e o arquivo (versão) para abrir.
+          </p>
+
+          <form action="/visualizar" method="get">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Competência (mês/ano)</label>
+                <select id="competencia-select" name="competencia" class="form-select">
+                  <option value="">— Selecione —</option>
+                  {% for c in competencias_disponiveis %}
+                    <option value="{{ c }}">{{ c }}</option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Mostra as pastas YYYY-MM existentes no bucket.</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Arquivo (versão)</label>
+                <select id="arquivo-select" name="file" class="form-select" disabled>
+                  <option value="">Selecione uma competência primeiro</option>
+                </select>
+                <div class="form-text">Aqui aparecem os df_final disponíveis dentro do mês.</div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-outline-dark w-100 mt-3">
+              Abrir dashboards selecionados
+            </button>
+          </form>
+        </div>
+
       </div>
     </div>
   </div>
 
   <script>
+    // ===================== Upload list =====================
     const input = document.getElementById('files-input');
     const area = document.querySelector('.upload-area');
     const fileList = document.getElementById('file-list');
 
-    area.addEventListener('click', () => input.click());
+    area?.addEventListener('click', () => input.click());
 
-    input.addEventListener('change', () => {
+    input?.addEventListener('change', () => {
       if (!input.files.length) {
         fileList.textContent = '';
         return;
@@ -97,6 +133,53 @@
       const nomes = Array.from(input.files).map(f => f.webkitRelativePath || f.name);
       fileList.innerHTML = "<strong>Arquivos selecionados:</strong><br>" + nomes.join("<br>");
     });
+
+    // ===================== Supabase file picker =====================
+    const compSel = document.getElementById("competencia-select");
+    const arqSel = document.getElementById("arquivo-select");
+
+    async function carregarArquivosDaCompetencia(comp) {
+      arqSel.innerHTML = "";
+      arqSel.disabled = true;
+
+      if (!comp) {
+        arqSel.innerHTML = `<option value="">Selecione uma competência primeiro</option>`;
+        return;
+      }
+
+      arqSel.innerHTML = `<option value="">Carregando...</option>`;
+
+      try {
+        const res = await fetch(`/api/arquivos?competencia=${encodeURIComponent(comp)}`);
+        const data = await res.json();
+
+        if (!data.ok || !data.files || !data.files.length) {
+          arqSel.innerHTML = `<option value="">Nenhum df_final encontrado para ${comp}</option>`;
+          return;
+        }
+
+        arqSel.disabled = false;
+        arqSel.innerHTML = data.files.map(p => {
+          // mostra só o nome do arquivo no select
+          const nome = p.split("/").pop();
+          return `<option value="${p}">${nome}</option>`;
+        }).join("");
+
+      } catch (e) {
+        arqSel.innerHTML = `<option value="">Erro ao listar arquivos</option>`;
+      }
+    }
+
+    compSel?.addEventListener("change", (e) => {
+      carregarArquivosDaCompetencia(e.target.value);
+    });
+
+    // auto-carrega se já tiver 1ª competência disponível
+    (function init(){
+      if (compSel && compSel.value) {
+        carregarArquivosDaCompetencia(compSel.value);
+      }
+    })();
   </script>
 </body>
 </html>
