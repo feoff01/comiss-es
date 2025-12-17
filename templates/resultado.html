@@ -598,6 +598,56 @@
   <!--  <img src="{{ url_for('static', filename='staticlogo.png') }}" class="logo-canto">-->
 
   <div class="container py-5">
+      {% if competencia %}
+    <div class="alert alert-info py-2 mb-3">
+      <strong>Competência:</strong> {{ competencia }}
+    </div>
+  {% endif %}
+  <!-- ===================== TROCAR ARQUIVO (SUPABASE) ===================== -->
+<div class="card p-3 mb-3" id="trocar-arquivo">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <div class="fw-semibold">Trocar arquivo exibido</div>
+      <div class="text-muted small">
+        Selecione a competência e a versão do df_final para recarregar este dashboard.
+      </div>
+    </div>
+
+    <form action="/visualizar" method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Competência</label>
+        <select id="competencia-select-res" name="competencia" class="form-select form-select-sm">
+          <option value="">— Selecione —</option>
+          {% for c in competencias_disponiveis %}
+            <option value="{{ c }}" {% if c == competencia_atual %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label small mb-1">Arquivo (versão)</label>
+        <select id="arquivo-select-res" name="file" class="form-select form-select-sm" {% if not competencia_atual %}disabled{% endif %}>
+          {% if arquivos_df_final and arquivos_df_final|length > 0 %}
+            {% for p in arquivos_df_final %}
+              {% set nome = p.split('/')[-1] %}
+              <option value="{{ p }}" {% if p == caminho_df_final %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="">Selecione uma competência</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-dark btn-sm">
+          Aplicar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
     <div class="row mb-3">
       <div class="col-12 d-flex justify-content-between align-items-center">
         <h1 class="h4 m-0">Resultado - Valor Total por Assessor</h1>
@@ -759,6 +809,8 @@
         role="tabpanel"
         aria-labelledby="tab-arvore"
       >
+      <!-- ===== Atalho para trocar arquivo dentro da Árvore ===== -->
+
         <div class="card p-3 mb-3">
           <h2 class="h6 mb-3">Árvore de recebimento de comissão</h2>
           <p class="text-muted small mb-3">
@@ -2204,5 +2256,61 @@ function exportarTabelaArvoreCSV() {
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  // ===================== Trocar arquivo no Resultado =====================
+  const compSelRes = document.getElementById("competencia-select-res");
+  const arqSelRes = document.getElementById("arquivo-select-res");
+
+  async function carregarArquivosResultado(comp, selectedFile=null) {
+    arqSelRes.innerHTML = "";
+    arqSelRes.disabled = true;
+
+    if (!comp) {
+      arqSelRes.innerHTML = `<option value="">Selecione uma competência</option>`;
+      return;
+    }
+
+    arqSelRes.innerHTML = `<option value="">Carregando...</option>`;
+
+    try {
+      const res = await fetch(`/api/arquivos?competencia=${encodeURIComponent(comp)}`);
+      const data = await res.json();
+
+      if (!data.ok || !data.files || !data.files.length) {
+        arqSelRes.innerHTML = `<option value="">Nenhum df_final encontrado</option>`;
+        return;
+      }
+
+      arqSelRes.disabled = false;
+
+      arqSelRes.innerHTML = data.files.map(p => {
+        const nome = p.split("/").pop();
+        const sel = (selectedFile && selectedFile === p) ? "selected" : "";
+        return `<option value="${p}" ${sel}>${nome}</option>`;
+      }).join("");
+
+      if (!selectedFile) arqSelRes.value = data.files[0];
+
+    } catch (e) {
+      arqSelRes.innerHTML = `<option value="">Erro ao listar arquivos</option>`;
+    }
+  }
+
+  compSelRes?.addEventListener("change", (e) => {
+    carregarArquivosResultado(e.target.value, null);
+  });
+
+  (function initTrocaResultado(){
+    const compAtual = compSelRes?.value;
+    const caminhoAtual = "{{ caminho_df_final or '' }}";
+    if (compAtual) {
+      if (arqSelRes && (arqSelRes.disabled || arqSelRes.options.length <= 1)) {
+        carregarArquivosResultado(compAtual, caminhoAtual || null);
+      }
+    }
+  })();
+</script>
+
 </body>
 </html>
