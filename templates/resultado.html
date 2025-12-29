@@ -1091,52 +1091,6 @@ function montarTabelaArvore(dadosFiltrados) {
   history.replaceState(null, "", url.toString());
 }
 
-function normalizarTexto(v) {
-  return (v ?? "").toString().toLowerCase().trim();
-}
-
-function getUnicosFromLinhas(linhas, col) {
-  const set = new Set();
-  linhas.forEach(row => {
-    const val = row[col];
-    if (val !== undefined && val !== null && String(val).trim() !== "") {
-      set.add(String(val).trim());
-    }
-  });
-  return Array.from(set).sort((a,b) => a.localeCompare(b));
-}
-
-// Atualiza categorias disponíveis conforme assessor selecionado
-function atualizarCategoriasPorAssessor(codAss) {
-  const cod = normalizarTexto(codAss);
-
-  // se não tem assessor, volta para TODAS as categorias
-  if (!cod) {
-    listaCategoriasArvore = getUnicos("Categoria");
-    return;
-  }
-
-  // filtra linhas do assessor (mantém sua lógica de "includes")
-  const linhasAss = dfJuntar.filter(l => {
-    const codLinha = normalizarTexto(l["Código Assessor"]);
-    return codLinha.includes(cod);
-  });
-
-  listaCategoriasArvore = getUnicosFromLinhas(linhasAss, "Categoria");
-}
-
-// Se a categoria digitada não existe mais para esse assessor, limpa
-function garantirCategoriaValida() {
-  const inputCat = document.getElementById("produto-arvore");
-  if (!inputCat) return;
-
-  const catAtual = (inputCat.value || "").trim();
-  if (!catAtual) return;
-
-  const existe = listaCategoriasArvore.some(c => c.toLowerCase() === catAtual.toLowerCase());
-  if (!existe) inputCat.value = "";
-}
-
 
 
     function carregarListaAssessores() {
@@ -1383,21 +1337,59 @@ let dadosArvoreAtual = [];
     // === SELECTS: Assessor + Categoria ===
     // LISTAS DE AUTOCOMPLETE DA ABA ÁRVORE
 let listaAssessoresArvore = [];
-let listaCategoriasArvore = [];
+let listaCategoriasArvore = []; // <- agora será dinâmica (depende do assessor)
+
+// categorias existentes PARA um assessor (se vazio, retorna todas)
+function getCategoriasPorAssessor(codAss) {
+  const cod = (codAss || "").toString().toLowerCase().trim();
+
+  const set = new Set();
+  dfJuntar.forEach(row => {
+    const codLinha = (row["Código Assessor"] || "").toString().toLowerCase();
+    const cat = row["Categoria"];
+
+    const okAss = !cod || codLinha.includes(cod);
+    if (okAss && cat !== undefined && cat !== null && String(cat).trim() !== "") {
+      set.add(cat);
+    }
+  });
+
+  return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
+}
 
 function carregarListasArvore() {
   listaAssessoresArvore = getUnicos("Código Assessor");
+  // começa com todas, mas vai atualizar quando escolher assessor
+  listaCategoriasArvore = getCategoriasPorAssessor("");
+}
 
-  // inicia com todas as categorias, mas depois vamos recalcular conforme o assessor
-  listaCategoriasArvore = getUnicos("Categoria");
-
-  // se já houver assessor preenchido (ex: vindo da URL), já adapta as categorias
+// atualiza a lista de categorias quando muda o assessor
+function atualizarCategoriasPorAssessor() {
   const inputAss = document.getElementById("assessor-arvore");
-  if (inputAss) {
-    atualizarCategoriasPorAssessor(inputAss.value);
-    garantirCategoriaValida();
+  const inputCat = document.getElementById("produto-arvore");
+  const boxCat = document.getElementById("sugestoes-produto-arvore");
+
+  const codAss = inputAss ? inputAss.value : "";
+
+  // recalcula categorias disponíveis (somente desse assessor)
+  listaCategoriasArvore = getCategoriasPorAssessor(codAss);
+
+  // se a categoria digitada não existir mais, limpa
+  if (inputCat) {
+    const atual = (inputCat.value || "").trim();
+    const existe = listaCategoriasArvore.some(x => String(x) === atual);
+
+    if (atual && !existe) {
+      inputCat.value = "";
+    }
+  }
+
+  // se o dropdown da categoria estiver aberto, atualiza ele na hora
+  if (boxCat && boxCat.style.display === "block" && inputCat) {
+    mostrarSugestoesGeneric(inputCat, boxCat, listaCategoriasArvore);
   }
 }
+
 
 
 function mostrarSugestoesGeneric(inputEl, containerEl, listaValores) {
@@ -1424,22 +1416,13 @@ function mostrarSugestoesGeneric(inputEl, containerEl, listaValores) {
     item.className = "list-group-item list-group-item-action py-1 px-2";
     item.textContent = v;
 
-item.addEventListener("click", () => {
+    item.addEventListener("click", () => {
   inputEl.value = v;
   containerEl.style.display = "none";
 
-  // ✅ se selecionou assessor, recalcula categorias disponíveis
+  // ✅ SE CLICOU NO ASSESSOR: atualiza categorias imediatamente
   if (inputEl.id === "assessor-arvore") {
-    atualizarCategoriasPorAssessor(inputEl.value);
-    garantirCategoriaValida();
-
-    // opcional: se quiser já abrir/atualizar sugestões de categoria
-    const inputCat = document.getElementById("produto-arvore");
-    const boxCat = document.getElementById("sugestoes-produto-arvore");
-    if (inputCat && boxCat) {
-      mostrarSugestoesGeneric(inputCat, boxCat, listaCategoriasArvore);
-    }
-
+    atualizarCategoriasPorAssessor(); // <<< ESSENCIAL
     atualizarURLComFiltroArvore();
   }
 
@@ -1466,21 +1449,17 @@ function configurarAutocompleteArvore() {
   // Assessor
   // Assessor
 inputAss.addEventListener("input", () => {
-  // sugestões do assessor (igual)
+  // 1) mostra sugestões de assessor
   mostrarSugestoesGeneric(inputAss, boxAss, listaAssessoresArvore);
 
-  // ✅ aqui atualiza a lista de categorias conforme assessor
-  atualizarCategoriasPorAssessor(inputAss.value);
-  garantirCategoriaValida();
+  // 2) recalcula categorias disponíveis pra esse assessor
+  atualizarCategoriasPorAssessor();
 
-  // se a caixa de categoria estiver aberta, atualiza as sugestões dela
-  mostrarSugestoesGeneric(inputCat, boxCat, listaCategoriasArvore);
-
+  // 3) atualiza tela
   atualizarArvore();
   montarResumoProdutos();
   atualizarURLComFiltroArvore();
 });
-
 
 
   inputAss.addEventListener("focus", () => {
@@ -2248,7 +2227,7 @@ function gerarTabelaHTML(linhas) {
   montarTabelaHierarquica(filtrado);
   montarGraficoCategoria(filtrado);   // <<< NOVO
   montarGraficoProduto(filtrado);
-  
+
 
 
   if (textoFiltro) {
@@ -2323,6 +2302,9 @@ function exportarTabelaArvoreCSV() {
       inputAss.value = "";
     }
   }
+
+atualizarCategoriasPorAssessor();
+
 
   const btnArvore = document.getElementById("btn-arvore");
 
