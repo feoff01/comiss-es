@@ -24,9 +24,44 @@
     }
     .upload-area:hover { background: #f0f0ff; }
     .subtitle { color: #666; font-size: 0.9rem; }
+
+    /* ===== Overlay de carregamento ===== */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      backdrop-filter: blur(2px);
+    }
+    .loading-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .loading-text {
+      font-weight: 600;
+      color: #222;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Overlay -->
+  <div id="loading-overlay">
+    <div class="loading-card">
+      <div class="spinner-border" role="status" aria-hidden="true"></div>
+      <div class="loading-text">Carregando...</div>
+    </div>
+  </div>
+
   <div class="container py-5">
     <div class="row justify-content-center g-4">
       <div class="col-lg-10">
@@ -45,8 +80,7 @@
         <div class="card p-4 p-md-5 mb-4">
           <h1 class="h3 mb-2 text-center">Processar comissões</h1>
 
-
-          <form action="/processar" method="post" enctype="multipart/form-data">
+          <form action="/processar" method="post" enctype="multipart/form-data" class="js-show-loading">
             <div class="mb-3">
               <label class="form-label fw-semibold">Competência (mês/ano)</label>
               <input type="month" name="competencia" class="form-control" required>
@@ -80,12 +114,12 @@
 
         <!-- ===================== CARD 2: VISUALIZAR MÊS ANTIGO ===================== -->
         <div class="card p-4 p-md-5">
-          <h2 class="h4 mb-2 text-center">Visualizar dashboards antigos </h2>
+          <h2 class="h4 mb-2 text-center">Visualizar dashboards antigos</h2>
           <p class="subtitle text-center mb-4">
             Se já existir planilha, você pode escolher o mês e o arquivo (versão) para abrir.
           </p>
 
-          <form action="/visualizar" method="get">
+          <form action="/visualizar" method="get" class="js-show-loading">
             <div class="row g-3">
               <div class="col-md-6">
                 <label class="form-label fw-semibold">Competência (mês/ano)</label>
@@ -118,6 +152,22 @@
   </div>
 
   <script>
+    // ===== Overlay helpers =====
+    const overlay = document.getElementById("loading-overlay");
+    function showLoading() {
+      if (overlay) overlay.style.display = "flex";
+    }
+    function hideLoading() {
+      if (overlay) overlay.style.display = "none";
+    }
+    window.addEventListener("pageshow", () => hideLoading()); // volta do cache/voltar
+
+    document.addEventListener("submit", (e) => {
+      if (e.target && e.target.classList.contains("js-show-loading")) {
+        showLoading();
+      }
+    });
+
     // ===================== Upload list =====================
     const input = document.getElementById('files-input');
     const area = document.querySelector('.upload-area');
@@ -160,7 +210,6 @@
 
         arqSel.disabled = false;
         arqSel.innerHTML = data.files.map(p => {
-          // mostra só o nome do arquivo no select
           const nome = p.split("/").pop();
           return `<option value="${p}">${nome}</option>`;
         }).join("");
@@ -174,7 +223,6 @@
       carregarArquivosDaCompetencia(e.target.value);
     });
 
-    // auto-carrega se já tiver 1ª competência disponível
     (function init(){
       if (compSel && compSel.value) {
         carregarArquivosDaCompetencia(compSel.value);
